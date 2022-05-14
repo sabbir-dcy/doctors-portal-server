@@ -1,6 +1,10 @@
+// http://localhost:5000/
+
 const express = require('express')
 const cors = require('cors')
 require('dotenv').config()
+const jwt = require('jsonwebtoken')
+
 const app = express()
 const port = process.env.PORT || 5000
 
@@ -23,15 +27,18 @@ const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
 })
 
+// function verify
 async function run() {
   try {
     await client.connect()
     console.log('connected to db')
+
     const servicesCollection = client
       .db('doctors_portal')
       .collection('services')
-
     const bookingCollection = client.db('doctors_portal').collection('bookings')
+    const userCollection = client.db('doctors_portal').collection('users')
+
     // rest api
     app.get('/services', async (req, res) => {
       const query = req.query
@@ -46,7 +53,26 @@ async function run() {
      * ?app.post('/booking') -> add a new booking
      * ?app.patch('/booking/:id')
      * ?app.delete('/booking/:id')
+     * ?app.put('/booking:id',) -> upsert : if exist update or create
      */
+
+    app.put('/user/:email', async (req, res) => {
+      const email = req.params.email
+      const filter = { email: email }
+      const user = req.body
+      const option = { upsert: true }
+
+      const updateDoc = {
+        $set: user,
+      }
+
+      const result = await userCollection.updateOne(filter, updateDoc, option)
+
+      const token = jwt.sign({ email: email }, process.env.ACCESS_TOKEN, {
+        expiresIn: '1h',
+      })
+      res.send({ result, token })
+    })
 
     app.get('/available', async (req, res) => {
       const date = req.query.date
@@ -79,6 +105,8 @@ async function run() {
     })
 
     app.get('/booking', async (req, res) => {
+      const authorization = req.headers.authorization
+      console.log(authorization)
       const patient = req.query.patient
       const query = { patient: patient }
       const bookings = await bookingCollection.find(query).toArray()
