@@ -27,7 +27,20 @@ const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
 })
 
-// function verify
+function verifyJWT(req, res, next) {
+  const authHeader = req.headers.authorization
+  if (!authHeader) {
+    return res.status(401).send({ message: 'unauthorized access' })
+  }
+  const token = authHeader.split(' ')[1]
+  jwt.verify(token, process.env.ACCESS_TOKEN, (error, decoded) => {
+    if (error) {
+      return res.status(403).send({ message: 'forbidden access' })
+    }
+    req.decoded = decoded
+    next()
+  })
+}
 async function run() {
   try {
     await client.connect()
@@ -42,8 +55,20 @@ async function run() {
     // rest api
     app.get('/services', async (req, res) => {
       const query = req.query
-      const result = await servicesCollection.find(query).toArray()
+      const result = await servicesCollection.find(query).project({ name: 1 }).toArray()
       res.send(result)
+    })
+
+    app.get('/booking', verifyJWT, async (req, res) => {
+      const patient = req.query.patient
+      const decodedEmail = req.decoded.email
+      if (patient === decodedEmail) {
+        const query = { patient: patient }
+        const bookings = await bookingCollection.find(query).toArray()
+        return res.send(bookings)
+      } else {
+        return res.status(403).send({ message: 'forbidden access unkown' })
+      }
     })
 
     /**
@@ -56,6 +81,36 @@ async function run() {
      * ?app.put('/booking:id',) -> upsert : if exist update or create
      */
 
+    app.get('/users', verifyJWT, async (req, res) => {
+      const users = await userCollection.find().toArray()
+      res.send(users)
+    })
+
+    app.get('/admin/:email', async (req, res) => {
+      const email = req.params.email
+      const user = await userCollection.findOne({ email: email })
+      const isAdmin = user.role === 'admin'
+      res.send(isAdmin)
+    })
+
+    app.put('/user/admin/:email', verifyJWT, async (req, res) => {
+      const email = req.params.email
+
+      const requester = req.decoded.email
+      const requesterAccount = await userCollection.findOne({
+        email: requester,
+      })
+      if (requesterAccount.role === 'admin') {
+        const filter = { email: email }
+        const updateDoc = {
+          $set: { role: 'admin' },
+        }
+        const result = await userCollection.updateOne(filter, updateDoc)
+        res.send(result)
+      } else {
+        res.status(403).send({ message: 'forbidden: not admin' })
+      }
+    })
     app.put('/user/:email', async (req, res) => {
       const email = req.params.email
       const filter = { email: email }
@@ -102,15 +157,6 @@ async function run() {
         service.slots = available
       })
       res.send(services)
-    })
-
-    app.get('/booking', async (req, res) => {
-      const authorization = req.headers.authorization
-      console.log(authorization)
-      const patient = req.query.patient
-      const query = { patient: patient }
-      const bookings = await bookingCollection.find(query).toArray()
-      res.send(bookings)
     })
 
     app.post('/booking', async (req, res) => {
