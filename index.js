@@ -28,6 +28,7 @@ const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
 })
 
+//!----------------jwt function
 function verifyJWT(req, res, next) {
   const authHeader = req.headers.authorization
   if (!authHeader) {
@@ -42,6 +43,9 @@ function verifyJWT(req, res, next) {
     next()
   })
 }
+
+
+//!------------api run function
 async function run() {
   try {
     await client.connect()
@@ -54,7 +58,20 @@ async function run() {
     const userCollection = client.db('doctors_portal').collection('users')
     const doctorCollection = client.db('doctors_portal').collection('doctors')
 
-    // rest api
+
+    const verifyAdmin = async (req, res) => {
+      const requester = req.decoded.email
+      const requesterAccount = await userCollection.findOne({
+        email: requester,
+      })
+      if (requesterAccount.role === 'admin') {
+        next()
+      } else {
+        res.status(403).send({ message: 'forbidden: not admin' })
+      }
+    }
+    //* rest api
+    //!-----------get all services public api
     app.get('/services', async (req, res) => {
       const query = req.query
       const result = await servicesCollection.find(query).project({ name: 1 }).toArray()
@@ -83,11 +100,13 @@ async function run() {
      * ?app.put('/booking:id',) -> upsert : if exist update or create
      */
 
+    //!-----------------get all the use in dashboard
     app.get('/users', verifyJWT, async (req, res) => {
       const users = await userCollection.find().toArray()
       res.send(users)
     })
 
+    //!----------------check if logged in user is admin
     app.get('/admin/:email', async (req, res) => {
       const email = req.params.email
       const user = await userCollection.findOne({ email: email })
@@ -95,24 +114,20 @@ async function run() {
       res.send(isAdmin)
     })
 
-    app.put('/user/admin/:email', verifyJWT, async (req, res) => {
-      const email = req.params.email
 
-      const requester = req.decoded.email
-      const requesterAccount = await userCollection.findOne({
-        email: requester,
-      })
-      if (requesterAccount.role === 'admin') {
-        const filter = { email: email }
-        const updateDoc = {
-          $set: { role: 'admin' },
-        }
-        const result = await userCollection.updateOne(filter, updateDoc)
-        res.send(result)
-      } else {
-        res.status(403).send({ message: 'forbidden: not admin' })
+    //!----------------set admin role 
+    app.put('/user/admin/:email', verifyJWT, verifyAdmin, async (req, res) => {
+
+      const filter = { email: email }
+      const updateDoc = {
+        $set: { role: 'admin' },
       }
+      const result = await userCollection.updateOne(filter, updateDoc)
+      res.send(result)
+
     })
+
+
     app.put('/user/:email', async (req, res) => {
       const email = req.params.email
       const filter = { email: email }
@@ -131,6 +146,7 @@ async function run() {
       res.send({ result, token })
     })
 
+    //! --------------available services after each booling
     app.get('/available', async (req, res) => {
       const date = req.query.date
 
@@ -176,7 +192,8 @@ async function run() {
       res.send({ success: true, result })
     })
 
-    app.post('/doctor', async (req, res) => {
+    //!----------------------add a doctor
+    app.post('/doctor', verifyJWT, verifyAdmin, async (req, res) => {
       const doctor = req.body
       console.log(doctor)
       const result = await doctorCollection.insertOne(doctor)
