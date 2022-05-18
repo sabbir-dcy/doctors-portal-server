@@ -21,6 +21,7 @@ app.listen(port, () => {
 
 const { MongoClient, ServerApiVersion } = require('mongodb')
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.c4kfn.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`
+
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -177,6 +178,7 @@ async function run() {
 
     app.post('/doctor', async (req, res) => {
       const doctor = req.body
+      console.log(doctor)
       const result = await doctorCollection.insertOne(doctor)
       res.send(result)
     })
