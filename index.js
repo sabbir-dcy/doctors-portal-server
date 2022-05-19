@@ -1,8 +1,7 @@
 // http://localhost:5000/
 
-const express = require('express')
-const cors = require('cors')
-app.use(cors())
+import express from 'express'
+import cors from 'cors'
 
 require('dotenv').config()
 const jwt = require('jsonwebtoken')
@@ -11,13 +10,12 @@ var nodemailer = require('nodemailer');
 var sgTransport = require('nodemailer-sendgrid-transport');
 const stripe = require('stripe')(process.env.STRIPE_SECRET);
 
-
-
 const app = express()
 const port = process.env.PORT || 5000
 
 
 app.use(express.json())
+app.use(cors())
 
 app.get('/', (req, res) => {
   res.send('Hello World!')
