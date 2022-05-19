@@ -1,7 +1,12 @@
 // http://localhost:5000/
 
 const express = require('express')
-const cors = require('cors')
+const corsConfig = {
+  origin: true,
+  credentials: true,
+};
+app.use(cors(corsConfig));
+app.options("*", cors(corsConfig));
 require('dotenv').config()
 const jwt = require('jsonwebtoken')
 
