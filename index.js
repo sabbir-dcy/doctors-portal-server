@@ -7,6 +7,9 @@ const jwt = require('jsonwebtoken')
 
 var nodemailer = require('nodemailer');
 var sgTransport = require('nodemailer-sendgrid-transport');
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
+
+
 
 const app = express()
 const port = process.env.PORT || 5000
@@ -22,7 +25,7 @@ app.listen(port, () => {
   console.log(`Doctors app listening on port ${port}`)
 })
 
-const { MongoClient, ServerApiVersion } = require('mongodb')
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.c4kfn.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`
 
 const client = new MongoClient(uri, {
@@ -97,7 +100,7 @@ async function run() {
     const bookingCollection = client.db('doctors_portal').collection('bookings')
     const userCollection = client.db('doctors_portal').collection('users')
     const doctorCollection = client.db('doctors_portal').collection('doctors')
-
+    const paymentCollection = client.db('doctors_portal').collection('payments')
 
     const verifyAdmin = async (req, res, next) => {
       const requester = req.decoded.email
@@ -111,6 +114,19 @@ async function run() {
       }
     }
     //* rest api
+
+    //!--------------stripe payment
+    app.post("/create-payment-intent", verifyJWT, async (req, res) => {
+      const { price } = req.body;
+      const amount = price * 100
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd',
+        payment_method_types: ['card']
+      })
+      res.send({ clientSecret: paymentIntent.client_secret })
+    })
+
     //!-----------get all services public api
     app.get('/services', async (req, res) => {
       const query = req.query
@@ -118,6 +134,7 @@ async function run() {
       res.send(result)
     })
 
+    //!---------------get booking of individuals
     app.get('/booking', verifyJWT, async (req, res) => {
       const patient = req.query.patient
       const decodedEmail = req.decoded.email
@@ -128,6 +145,31 @@ async function run() {
       } else {
         return res.status(403).send({ message: 'forbidden access unkown' })
       }
+    })
+
+    //!-----------------get bookings using id (use params)
+    app.get('/booking/:id', verifyJWT, async (req, res) => {
+      const id = req.params.id
+      const query = { _id: ObjectId(id) }
+      const booking = await bookingCollection.findOne(query)
+      res.send(booking)
+    })
+
+    //!..............update booking with transaction id
+    app.patch('/booking/:id', verifyJWT, async (req, res) => {
+      const id = req.params.id
+      const filter = { _id: ObjectId(id) }
+      const payment = req.body
+      const updatedDoc = {
+        $set: {
+          paid: true,
+          transactionId: payment.transactionId
+        }
+      }
+      const updatedBooking = await bookingCollection.updateOne(filter, updatedDoc)
+      const result = await paymentCollection.insertOne(payment)
+      res.send(updatedDoc)
+
     })
 
     /**
